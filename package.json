@@ -1,0 +1,13 @@
+{
+  "name": "ai-video-creator",
+  "version": "1.0.0",
+  "description": "AI Video Creator with Seedance AI",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000"
+  },
+  "keywords": ["ai", "video", "creator", "seedance"],
+  "author": "Your Name",
+  "license": "MIT"
+}
