@@ -453,7 +453,7 @@
             </div>
             <div class="settings-form-group">
                 <label for="webhookUrl">Webhook URL</label>
-                <input type="url" id="webhookUrl" placeholder="https://your-n8n-instance.com/webhook-test/story-time">
+                <input type="url" id="webhookUrl" placeholder="https://n8n2.geekhouse.io/webhook/story-time">
             </div>
             <button class="save-settings-btn" id="saveSettings">Save Settings</button>
         </div>
@@ -461,8 +461,7 @@
 
     <script>
         // n8n webhook URL - can be updated via settings
-        let WEBHOOK_URL = localStorage.getItem('webhookUrl') || 'https://n8n2.geekhouse.io/webhook-test/story-time';
-        let RESUME_WEBHOOK_URL = WEBHOOK_URL;
+        let WEBHOOK_URL = localStorage.getItem('webhookUrl') || 'https://n8n2.geekhouse.io/webhook/story-time';
 
         // Google Gemini API configuration
         const GEMINI_API_KEY = 'AIzaSyCSAquXebiwOSJWMsJ-z5ZTN4JPzAnTjXo';
@@ -501,13 +500,18 @@
                     const result = await response.json();
                     console.log('Webhook response:', result);
 
-                    if (result.mediaURL) {
+                    // Check for final_video in the response
+                    if (result.final_video) {
+                        updateStatus('Video created successfully!', 100);
+                        displayMedia(result.final_video);
+                    } else if (result.mediaURL) {
                         updateStatus('Video created successfully!', 100);
                         displayMedia(result.mediaURL);
                     } else {
-                        updateStatus('Video creation started! Processing scenes...', 10);
-                        // Start polling for completion if no immediate media URL
-                        pollForCompletion();
+                        // The webhook is processing - it will return the final_video when complete
+                        updateStatus('🎬 Processing your video... This may take a few minutes.', 50);
+                        showResult('Video is being processed. The webhook will return the result when complete.', 'success');
+                        resetForm();
                     }
                 } else {
                     const errorText = await response.text();
@@ -526,61 +530,7 @@
             document.getElementById('progressFill').style.width = progress + '%';
         }
 
-        function pollForCompletion() {
-            let attempts = 0;
-            const maxAttempts = 120; // 10 minutes max (5 second intervals)
 
-            const pollInterval = setInterval(async () => {
-                attempts++;
-
-                try {
-                    // Try to resume the webhook to check if it's complete
-                    const response = await fetch(RESUME_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            jobId: currentJobId,
-                            action: 'check_status'
-                        })
-                    });
-
-                    if (response.ok) {
-                        const result = await response.json();
-
-                        if (result.status === 'completed') {
-                            clearInterval(pollInterval);
-                            updateStatus('Video created successfully!', 100);
-                            showResult('Your video has been created successfully! ' +
-                                (result.videoUrl ? `<a href="${result.videoUrl}" target="_blank">Download Video</a>` : ''), 'success');
-                            resetForm();
-                        } else if (result.status === 'failed') {
-                            clearInterval(pollInterval);
-                            showResult('Video creation failed: ' + (result.error || 'Unknown error'), 'error');
-                            resetForm();
-                        } else {
-                            // Still processing
-                            const progress = Math.min(10 + (attempts * 2), 90);
-                            updateStatus(result.message || 'Processing...', progress);
-                        }
-                    } else if (response.status === 404) {
-                        // Webhook not found yet, keep waiting
-                        const progress = Math.min(10 + (attempts * 2), 90);
-                        updateStatus('Processing scenes and generating images...', progress);
-                    }
-                } catch (error) {
-                    console.error('Polling error:', error);
-                    // Continue polling unless max attempts reached
-                }
-
-                if (attempts >= maxAttempts) {
-                    clearInterval(pollInterval);
-                    showResult('Video creation is taking longer than expected. Please check back later.', 'error');
-                    resetForm();
-                }
-            }, 5000); // Poll every 5 seconds
-        }
 
         function showResult(message, type) {
             const resultDiv = document.getElementById('result');
@@ -733,6 +683,16 @@
         const saveSettings = document.getElementById('saveSettings');
         const webhookUrlInput = document.getElementById('webhookUrl');
 
+        // Force the correct live webhook URL and clear any old cached values
+        const LIVE_WEBHOOK_URL = 'https://n8n2.geekhouse.io/webhook/story-time';
+        
+        // Clear old cached URL if it contains 'webhook-test' or 'marketing'
+        const cachedUrl = localStorage.getItem('webhookUrl');
+        if (cachedUrl && (cachedUrl.includes('webhook-test') || cachedUrl.includes('marketing'))) {
+            localStorage.removeItem('webhookUrl');
+            WEBHOOK_URL = LIVE_WEBHOOK_URL;
+        }
+        
         // Load current webhook URL into the input
         webhookUrlInput.value = WEBHOOK_URL;
 
@@ -759,9 +719,8 @@
             const newWebhookUrl = webhookUrlInput.value.trim();
             
             if (newWebhookUrl) {
-                // Update the webhook URLs
+                // Update the webhook URL
                 WEBHOOK_URL = newWebhookUrl;
-                RESUME_WEBHOOK_URL = newWebhookUrl;
                 
                 // Save to localStorage
                 localStorage.setItem('webhookUrl', newWebhookUrl);
